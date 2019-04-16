@@ -13,9 +13,11 @@ import (
 var (
 	orderMap = map[string]int{
 		"3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13,
-		"A": 14, "2": 15, "Joker-B": 16, "Joker-R": 17,
+		"A": 14, "2": 15, "JokerB": 16, "JokerR": 17,
 	}
 
+	// key: text of card group
+	// value: index of the "biggest" card
 	straightMap = map[string]int{
 		"345A2":  2,
 		"34562":  3,
@@ -61,11 +63,10 @@ func (c cddCard) LessThan(another cddCard) bool {
 func (c cddCard) CompareWith(another cddCard) (result int) {
 	result = c.CompareTextWith(another)
 	if result == 0 {
-		r := c.Color - another.Color
 		switch {
-		case r < 0:
+		case c.Color < another.Color:
 			result = -1
-		case r > 0:
+		case c.Color > another.Color:
 			result = 1
 		}
 	}
@@ -82,6 +83,10 @@ func (c cddCard) CompareTextWith(another cddCard) int {
 		return 1
 	}
 	return 0
+}
+
+func (c cddCard) String() string {
+	return ColorMap[c.Color] + "-" + c.Text
 }
 
 type cddCardGroup struct {
@@ -101,7 +106,9 @@ func (cg cddCardGroup) Swap(i, j int) {
 
 func (cg cddCardGroup) validate() (cgType int, err error) {
 	cgType, err = ILLEGAL, errIllegal
-	sort.Sort(cg)
+	if !sort.IsSorted(cg) {
+		sort.Sort(cg)
+	}
 
 	// no jokers in cdd
 	for _, card := range cg.Cards {
@@ -111,8 +118,7 @@ func (cg cddCardGroup) validate() (cgType int, err error) {
 		}
 	}
 
-	l := len(cg.Cards)
-	switch l {
+	switch cg.Len() {
 	case 1:
 		cgType, err = SINGLE, nil
 	case 2:
@@ -142,19 +148,34 @@ func (cg cddCardGroup) validate() (cgType int, err error) {
 	return
 }
 
-func (cg cddCardGroup) LessThan(another cddCardGroup) (bool, error) {
-	// var type1, type2 int
-	// var err error
-	// if type1, err = cg.validate(); err != nil {
-	// 	return false, err
-	// }
-	// if type2, err = another.validate(); err != nil {
-	// 	return false, err
-	// }
-	// if type1 >= STRAIGHT && type2 >= STRAIGHT && type1 < type2 {
-	// 	return true, nil
-	// }
-	return true, nil
+func (cg cddCardGroup) LessThan(another cddCardGroup) (result bool, err error) {
+	result, err = false, errIllegal
+	var type1, type2 int
+	if type1, err = cg.validate(); err != nil {
+		return
+	}
+	if type2, err = another.validate(); err != nil {
+		return
+	}
+	if type1 == type2 {
+		err = nil
+		switch type1 {
+		case SINGLE, PAIR, TRIPLE:
+			result = cg.Cards[cg.Len()-1].LessThan(another.Cards[another.Len()-1])
+
+		case STRAIGHT, STRFLUSH:
+			result = cg.Cards[straightMap[cg.Text()]].LessThan(another.Cards[straightMap[another.Text()]])
+
+		case SKELETON, KK:
+			result = cg.Cards[2].LessThan(another.Cards[2])
+		}
+		return
+	}
+	if type1 >= STRAIGHT && type2 >= STRAIGHT {
+		result, err = type1 < type2, nil
+		return
+	}
+	return
 }
 
 func (cg cddCardGroup) isPair() bool {
@@ -170,12 +191,13 @@ func (sortedCG cddCardGroup) isQuadruple() bool {
 }
 
 func (cg cddCardGroup) isStraightOrFlush() (bool, bool) {
+	sort.Sort(cg)
 	return cg.isStraight(), cg.isFlush()
 }
 
-func (cg cddCardGroup) isStraight() (exists bool) {
-	_, exists = straightMap[cg.Text()]
-	return
+func (sortCG cddCardGroup) isStraight() bool {
+	_, ok := straightMap[sortCG.Text()]
+	return ok
 }
 
 func (cg cddCardGroup) isFlush() bool {
@@ -199,11 +221,25 @@ func (sortedCG cddCardGroup) isKK() bool {
 	return cddCardGroup{sortedCG.Cards[0:4]}.isQuadruple() || cddCardGroup{sortedCG.Cards[1:5]}.isQuadruple()
 }
 
+// text only
 func (cg cddCardGroup) Text() string {
 	sort.Sort(cg)
 	var buf bytes.Buffer
 	for _, card := range cg.Cards {
 		buf.WriteString(card.Text)
+	}
+	return buf.String()
+}
+
+// color and text
+func (cg cddCardGroup) String() string {
+	sort.Sort(cg)
+	var buf bytes.Buffer
+	for i, card := range cg.Cards {
+		buf.WriteString(card.String())
+		if i < cg.Len()-1 {
+			buf.WriteString(" ")
+		}
 	}
 	return buf.String()
 }
