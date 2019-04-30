@@ -13,7 +13,7 @@ import (
 var (
 	orderMap = map[string]int{
 		"3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13,
-		"A": 14, "2": 15, "JokerB": 16, "JokerR": 17,
+		"A": 14, "2": 15,
 	}
 
 	// key: text of card group
@@ -32,10 +32,9 @@ var (
 	}
 )
 var (
-	errHasJoker      = errors.New("joker(s) found in card group")
-	errIllegal       = errors.New("illegal card group")
-	errNotComparable = errors.New("the two card groups are not comparable")
-	errUnknown       = errors.New("unknown error")
+	errIllegalCG       = errors.New("Illegal card group")
+	errCGNotComparable = errors.New("The two card groups are not comparable")
+	errUnknown         = errors.New("Unknown error")
 )
 
 const (
@@ -56,8 +55,7 @@ type cddCard struct {
 }
 
 func (c cddCard) LessThan(another cddCard) bool {
-	result := c.CompareTextWith(another)
-	return result == -1 || (result == 0 && c.Color < another.Color)
+	return c.CompareWith(another) == -1
 }
 
 func (c cddCard) CompareWith(another cddCard) (result int) {
@@ -105,17 +103,17 @@ func (cg cddCardGroup) Swap(i, j int) {
 }
 
 func (cg cddCardGroup) validate() (cgType int, err error) {
-	cgType, err = ILLEGAL, errIllegal
+	cgType, err = ILLEGAL, errUnknown
 	if !sort.IsSorted(cg) {
 		sort.Sort(cg)
 	}
 
-	// no jokers in cdd
 	for _, card := range cg.Cards {
-		if hasJoker := orderMap[card.Text] >= 16; hasJoker {
-			err = errHasJoker
-			return
+		if _, isValid := orderMap[card.Text]; isValid {
+			continue
 		}
+		err = errors.Errorf("<%s> is not a valid card", card.String())
+		return
 	}
 
 	switch cg.Len() {
@@ -124,13 +122,16 @@ func (cg cddCardGroup) validate() (cgType int, err error) {
 	case 2:
 		if cg.isPair() {
 			cgType, err = PAIR, nil
+			break
 		}
+		err = errors.Errorf("Card group <%s> is not a valid pair", cg.String())
 	case 3:
 		if cg.isTriple() {
 			cgType, err = TRIPLE, nil
+			break
 		}
+		err = errors.Errorf("Card group <%s> is not a valid triple", cg.String())
 	case 5:
-
 		b1, b2 := cg.isStraightOrFlush()
 		switch {
 		case b1 && b2:
@@ -143,22 +144,24 @@ func (cg cddCardGroup) validate() (cgType int, err error) {
 			cgType, err = KK, nil
 		case cg.isSkeleton():
 			cgType, err = SKELETON, nil
+		default:
+			err = errors.Errorf("Card group <%s> is not a valid pentuple", cg.String())
 		}
 	}
 	return
 }
 
-func (cg cddCardGroup) LessThan(another cddCardGroup) (result bool, err error) {
-	result, err = false, errIllegal
+func (cg cddCardGroup) LessThan(another cddCardGroup) (bool, error) {
 	var type1, type2 int
+	var err error
 	if type1, err = cg.validate(); err != nil {
-		return
+		return false, errors.Wrap(err, "Illegal card group")
 	}
 	if type2, err = another.validate(); err != nil {
-		return
+		return false, errors.Wrap(err, "Illegal card group")
 	}
 	if type1 == type2 {
-		err = nil
+		var result bool
 		switch type1 {
 		case SINGLE, PAIR, TRIPLE:
 			result = cg.Cards[cg.Len()-1].LessThan(another.Cards[another.Len()-1])
@@ -169,13 +172,12 @@ func (cg cddCardGroup) LessThan(another cddCardGroup) (result bool, err error) {
 		case SKELETON, KK:
 			result = cg.Cards[2].LessThan(another.Cards[2])
 		}
-		return
+		return result, nil
 	}
 	if type1 >= STRAIGHT && type2 >= STRAIGHT {
-		result, err = type1 < type2, nil
-		return
+		return type1 < type2, nil
 	}
-	return
+	return false, errCGNotComparable
 }
 
 func (cg cddCardGroup) isPair() bool {
@@ -195,8 +197,8 @@ func (cg cddCardGroup) isStraightOrFlush() (bool, bool) {
 	return cg.isStraight(), cg.isFlush()
 }
 
-func (sortCG cddCardGroup) isStraight() bool {
-	_, ok := straightMap[sortCG.Text()]
+func (sortedCG cddCardGroup) isStraight() bool {
+	_, ok := straightMap[sortedCG.Text()]
 	return ok
 }
 
@@ -206,7 +208,10 @@ func (cg cddCardGroup) isFlush() bool {
 		sum += card.Card.Color
 	}
 	switch sum {
-	case 5, 40, 320, 2560:
+	case 5 * CARD_COLOR_DIAMOND,
+		5 * CARD_COLOR_CLUB,
+		5 * CARD_COLOR_HEART,
+		5 * CARD_COLOR_SPADE:
 		return true
 	}
 	return false
