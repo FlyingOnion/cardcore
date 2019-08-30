@@ -11,14 +11,14 @@ import (
 )
 
 var (
-	orderMap = map[string]int{
+	OrderMap = map[string]int{
 		"3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13,
 		"A": 14, "2": 15,
 	}
 
 	// key: text of card group
 	// value: index of the "biggest" card
-	straightMap = map[string]int{
+	StraightMap = map[string]int{
 		"345A2":  2,
 		"34562":  3,
 		"34567":  4,
@@ -72,8 +72,8 @@ func (c cddCard) CompareWith(another cddCard) (result int) {
 }
 
 func (c cddCard) CompareTextWith(another cddCard) int {
-	v1 := orderMap[c.Card.Text]
-	v2 := orderMap[another.Card.Text]
+	v1 := OrderMap[c.Card.Text]
+	v2 := OrderMap[another.Card.Text]
 	if v1 < v2 {
 		return -1
 	}
@@ -109,7 +109,9 @@ func (cg cddCardGroup) validate() (cgType int, err error) {
 	}
 
 	for _, card := range cg.Cards {
-		if _, isValid := orderMap[card.Text]; isValid {
+		_, isValidColor := ColorMap[card.Color]
+		_, isValidText := OrderMap[card.Text]
+		if isValidColor && isValidText {
 			continue
 		}
 		err = errors.Errorf("<%s> is not a valid card", card.String())
@@ -163,11 +165,11 @@ func (cg cddCardGroup) LessThan(another cddCardGroup) (bool, error) {
 	if type1 == type2 {
 		var result bool
 		switch type1 {
-		case SINGLE, PAIR, TRIPLE:
+		case SINGLE, PAIR, TRIPLE, FLUSH:
 			result = cg.Cards[cg.Len()-1].LessThan(another.Cards[another.Len()-1])
 
 		case STRAIGHT, STRFLUSH:
-			result = cg.Cards[straightMap[cg.Text()]].LessThan(another.Cards[straightMap[another.Text()]])
+			result = cg.Cards[StraightMap[cg.Text()]].LessThan(another.Cards[StraightMap[another.Text()]])
 
 		case SKELETON, KK:
 			result = cg.Cards[2].LessThan(another.Cards[2])
@@ -198,7 +200,7 @@ func (cg cddCardGroup) isStraightOrFlush() (bool, bool) {
 }
 
 func (sortedCG cddCardGroup) isStraight() bool {
-	_, ok := straightMap[sortedCG.Text()]
+	_, ok := StraightMap[sortedCG.Text()]
 	return ok
 }
 
